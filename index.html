@@ -1622,6 +1622,67 @@ renderHeroLogHistory();
       musicPlaying = false;
     }
   }
+</script><!-- Panel test hiệu ứng hoa/tuyết — ẩn mặc định, hiện khi gõ từ khóa bí mật -->
+<div id="fx-test-panel" style="display:none; position:fixed; top:20px; right:20px; z-index:9999; gap:6px; background:var(--panel); padding:6px; border-radius:8px; border:1px solid var(--line); box-shadow:var(--panel-shadow);">
+  <button onclick="testFx('mai')" title="Hoa mai (0h-6h)" style="background:#f2c14e; border:none; width:30px; height:30px; border-radius:6px; cursor:pointer;">✿</button>
+  <button onclick="testFx('phuong')" title="Hoa phượng (6h-12h)" style="background:#e2374a; border:none; width:30px; height:30px; border-radius:6px; cursor:pointer; color:#fff;">❀</button>
+  <button onclick="testFx('hoasua')" title="Hoa sữa (12h-18h)" style="background:#f5f0e6; border:1px solid #ccc; width:30px; height:30px; border-radius:6px; cursor:pointer;">❋</button>
+  <button onclick="testFx('tuyet')" title="Tuyết (18h-24h)" style="background:#eaf3ff; border:1px solid #ccc; width:30px; height:30px; border-radius:6px; cursor:pointer;">❆</button>
+  <button onclick="testFx('auto')" title="Về lại chế độ tự động theo giờ" style="background:var(--gold); border:none; width:30px; height:30px; border-radius:6px; cursor:pointer; color:#fff; font-size:14px;">⟳</button>
+</div>
+
+<script>
+  // ----- Gõ từ khóa bí mật ở bất kỳ đâu trên trang (không cần click vào ô nào) -----
+  const FX_SECRET_KEYWORD = 'thitrong';
+  let fxKeyBuffer = '';
+
+  document.addEventListener('keydown', (e)=>{
+    // Bỏ qua nếu đang gõ trong input/textarea để không phá trải nghiệm nhập liệu bình thường
+    const tag = (e.target.tagName || '').toLowerCase();
+    if(tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+
+    // Chỉ nhận ký tự chữ cái đơn (bỏ qua Shift, Ctrl, phím mũi tên...)
+    if(e.key.length === 1 && /[a-zA-Z]/.test(e.key)){
+      fxKeyBuffer += e.key.toLowerCase();
+      // Giữ buffer không dài quá từ khóa để tránh phình bộ nhớ
+      if(fxKeyBuffer.length > FX_SECRET_KEYWORD.length){
+        fxKeyBuffer = fxKeyBuffer.slice(-FX_SECRET_KEYWORD.length);
+      }
+      if(fxKeyBuffer === FX_SECRET_KEYWORD){
+        toggleFxTestPanel();
+        fxKeyBuffer = ''; // reset để gõ lại lần nữa mới toggle tiếp
+      }
+    }
+  });
+
+  function toggleFxTestPanel(){
+    const panel = document.getElementById('fx-test-panel');
+    const isVisible = panel.style.display === 'flex';
+    panel.style.display = isVisible ? 'none' : 'flex';
+  }
+
+  // Xem trước thủ công — không ảnh hưởng đến vòng lặp tự động theo giờ thật
+  function testFx(type){
+    if(type === 'auto'){
+      activeFxType = null;      // reset để lần cập nhật kế tiếp tính lại theo giờ thật
+      renderWeatherFx(true);
+      return;
+    }
+    activeFxType = type;
+    const cfg = FX_CONFIG[type];
+    const el = document.getElementById('weatherFx');
+    if(!el || !cfg) return;
+    let html = '';
+    for(let i=0;i<cfg.count;i++){
+      const left = (Math.random()*100).toFixed(2);
+      const size = (cfg.minSize + Math.random()*(cfg.maxSize-cfg.minSize)).toFixed(1);
+      const dur = (cfg.minDur + Math.random()*(cfg.maxDur-cfg.minDur)).toFixed(1);
+      const delay = (-(Math.random()*dur)).toFixed(1);
+      const opacity = (0.55 + Math.random()*0.4).toFixed(2);
+      html += `<span class="petal" style="left:${left}%;font-size:${size}px;color:${cfg.color};animation-duration:${dur}s;animation-delay:${delay}s;opacity:${opacity};">${cfg.char}</span>`;
+    }
+    el.innerHTML = html;
+  }
 </script>
 </body>
 </html>
