@@ -1584,6 +1584,39 @@ renderHeroLogHistory();
   updateLabel();
   checkReminder();
 })();
+</script><!-- Nút bật/tắt nhạc nền -->
+<button id="music-toggle" onclick="toggleMusic()" style="
+  position:fixed; bottom:20px; right:20px; z-index:9999;
+  background:var(--gold); color:#fff; border:none;
+  padding:10px 16px; border-radius:24px;
+  font-family:'Inter',sans-serif; font-weight:600;
+  cursor:pointer; box-shadow:var(--panel-shadow);">
+  🎵 Bật nhạc nền
+</button>
+
+<iframe 
+  id="bg-music"
+  width="0" height="0"
+  frameborder="0"
+  allow="autoplay"
+  style="position:absolute; top:-9999px; left:-9999px;">
+</iframe>
+
+<script>
+  let musicPlaying = false;
+  function toggleMusic() {
+    const iframe = document.getElementById('bg-music');
+    const btn = document.getElementById('music-toggle');
+    if (!musicPlaying) {
+      iframe.src = "https://www.youtube.com/embed/rQnUD4Wlw5g?autoplay=1&loop=1&playlist=rQnUD4Wlw5g";
+      btn.textContent = "⏸️ Tắt nhạc nền";
+      musicPlaying = true;
+    } else {
+      iframe.src = "";
+      btn.textContent = "🎵 Bật nhạc nền";
+      musicPlaying = false;
+    }
+  }
 </script>
 </body>
 </html>
