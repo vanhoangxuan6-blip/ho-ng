@@ -1586,7 +1586,7 @@ renderHeroLogHistory();
 })();
 </script><!-- Nút bật/tắt nhạc nền -->
 <button id="music-toggle" onclick="toggleMusic()" style="
-  position:fixed; bottom:20px; right:20px; z-index:9999;
+  position:fixed; bottom:20px; left:20px; z-index:9999;
   background:var(--gold); color:#fff; border:none;
   padding:10px 16px; border-radius:24px;
   font-family:'Inter',sans-serif; font-weight:600;
@@ -1604,11 +1604,16 @@ renderHeroLogHistory();
 
 <script>
   let musicPlaying = false;
+  
+  // Video đầu tiên + danh sách các video tiếp theo (cách nhau bằng dấu phẩy)
+  const firstVideo = "rQnUD4Wlw5g";
+  const nextVideos = "1HRYISEnYX0,P9mqCv1yhBE,8Byd6elEkbw,kDBgSpklgyc,kDBgSpklgyc,OJMrv6IfuCI"; // thay bằng ID thật
+
   function toggleMusic() {
     const iframe = document.getElementById('bg-music');
     const btn = document.getElementById('music-toggle');
     if (!musicPlaying) {
-      iframe.src = "https://www.youtube.com/embed/rQnUD4Wlw5g?autoplay=1&loop=1&playlist=rQnUD4Wlw5g";
+      iframe.src = `https://www.youtube.com/embed/${firstVideo}?autoplay=1&loop=1&playlist=${nextVideos}`;
       btn.textContent = "⏸️ Tắt nhạc nền";
       musicPlaying = true;
     } else {
