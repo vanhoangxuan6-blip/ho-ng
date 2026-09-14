@@ -273,6 +273,11 @@
   .badge.jump{background:var(--tint-badge-jump-bg);color:var(--tint-badge-jump-text);}
   .badge.best{background:var(--tint-badge-best-bg);color:var(--tint-badge-best-text);}
   .badge.no{background:var(--panel-alt);color:var(--text-faint);}
+  .sched-table{cursor:default;}
+  .sched-table tr{cursor:default;}
+  .sched-table tr:hover td{background:transparent;}
+  .sched-table td{white-space:normal;vertical-align:top;}
+  .sched-table .badge{margin:0 3px 3px 0;display:inline-block;}
   .opt-note{
     margin:12px 18px 0;padding:10px 12px;font-size:12px;line-height:1.55;
     background:var(--tint-optnote-bg);border:1px solid var(--tint-optnote-border);border-radius:4px;color:var(--tint-optnote-text);
@@ -517,6 +522,31 @@
           <span class="hint">Tự lưu trên máy này, không mất khi tắt trang</span>
         </div>
         <div class="panel-body">
+
+          <div class="grp-title" style="margin-top:0;padding-top:0;border-top:none;">ĐỀ XUẤT MUA GÓI TỐI ƯU HÀNG NGÀY</div>
+          <small style="display:block;color:var(--text-faint);margin:-4px 0 12px;line-height:1.65;">
+            Xếp lịch mua theo đúng lộ trình đang tính ở khung "Kết quả lộ trình" bên phải — có xét số ngày sự kiện, giới hạn lượt mua mỗi ngày / tổng của từng gói, và mốc Linh Kỹ cần mở khóa cho gói tăng sao (dựa theo số lượt đã tích lũy).
+            Mốc quà NP trong ngày: <b>6 · 30 · 68 · 100 · 200 · 328 · 648 · 1000</b> NP — chi càng nhiều NP trong 1 ngày càng chạm được nhiều mốc quà của ngày đó.
+          </small>
+          <div class="toggle-row">
+            <div class="toggle-btn active-good" id="btnSchedFast" onclick="setScheduleMode('fast')">
+              <div><div class="t-label">Nhanh nhất</div><div class="t-desc">Mua sớm nhất có thể, ít ngày nhất</div></div>
+              <div class="pip"></div>
+            </div>
+            <div class="toggle-btn" id="btnSchedReasonable" onclick="setScheduleMode('reasonable')">
+              <div><div class="t-label">Hợp lý nhất</div><div class="t-desc">Rải đều mỗi ngày để ăn đủ mốc quà</div></div>
+              <div class="pip"></div>
+            </div>
+          </div>
+          <div id="scheduleSummary" class="opt-note" style="margin:10px 0;"></div>
+          <table class="opt-table sched-table">
+            <thead>
+              <tr><th style="text-align:left;">Ngày</th><th style="text-align:left;">Gói mua trong ngày</th><th>NP ngày</th><th>Lượt cộng dồn</th><th style="text-align:left;">Mốc quà đạt (NP)</th></tr>
+            </thead>
+            <tbody id="scheduleBody"></tbody>
+          </table>
+
+          <div class="grp-title">GHI NHẬT KÝ THỦ CÔNG</div>
           <div class="cfg-row" style="margin-bottom:12px;">
             <div class="field">
               <label>Ngày thứ</label>
@@ -1018,6 +1048,7 @@ function recalc(){
 
   buildOptimizerTable(eventDays, npPrice, config, targetLuot);
   renderLogHistory();
+  renderSchedule();
 }
 
 // ---------- Bảng tối ưu: NP cần theo từng mốc 100 lượt ----------
@@ -1076,6 +1107,182 @@ function buildOptimizerTable(eventDays, npPrice, config, currentTargetLuot){
     noteEl.style.display='block';
     noteEl.innerHTML = `Chưa thấy điểm tăng giá rõ rệt trong khoảng 100–2000 lượt. Bấm một dòng để đặt làm mục tiêu.`;
   }
+}
+
+// ---------- Đề xuất lịch mua gói tối ưu hàng ngày ----------
+// Mốc quà NP: mỗi khi tổng NP chi trong 1 NGÀY chạm các mốc dưới đây thì có thêm quà ingame ở mốc đó.
+// Mốc reset theo từng ngày (không cộng dồn qua ngày khác).
+const DAILY_NP_MILESTONES = [6, 30, 68, 100, 200, 328, 648, 1000];
+let scheduleMode = 'fast'; // 'fast' = nhanh nhất, 'reasonable' = hợp lý nhất (ăn đủ quà)
+
+function setScheduleMode(mode){
+  scheduleMode = mode;
+  const fastBtn = document.getElementById('btnSchedFast');
+  const reaBtn = document.getElementById('btnSchedReasonable');
+  if(fastBtn) fastBtn.className = 'toggle-btn' + (mode==='fast' ? ' active-good' : '');
+  if(reaBtn) reaBtn.className = 'toggle-btn' + (mode==='reasonable' ? ' active-good' : '');
+  renderSchedule();
+}
+
+// Xếp lộ trình MUA đã tính (computePlan) ra từng ngày cụ thể, tuân thủ:
+// - số ngày sự kiện (eventDays)
+// - số lượt/ngày tối đa của gói theo ngày (perDay) và tổng số lần tối đa của gói giới hạn/banner (maxCount)
+// - mốc Linh Kỹ cần mở khóa để mua gói tăng sao (unlockLK), tính theo số lượt đã tích lũy thực tế
+//   (lượt free + lượt từ mốc tặng tướng + lượt đã mua tính đến TRƯỚC ngày/lượt mua đó)
+function buildDailySchedule(mode){
+  const eventDays = Math.max(1, parseInt(document.getElementById('eventDays').value)||7);
+  const targetLuot = Math.max(0, parseFloat(document.getElementById('luotTarget').value)||0);
+  const config = readConfig(eventDays);
+  const plan = computePlan(targetLuot, config);
+
+  if(plan.purchases.length===0){
+    return {days:[], totalNP:0, totalGifts:0, eventDays, targetLuot, achieved:plan.totalAchieved, needsNothing:true};
+  }
+
+  // Lượt miễn phí phát sinh MỖI NGÀY (không tốn NP) — vẫn cần cộng dồn để xét mốc mở khóa gói tăng sao
+  const freeDailyItems = PKG.filter(p=>p.type==='free-daily').map(p=>{
+    const chk = document.getElementById('chk_'+p.id);
+    if(!chk || !chk.checked) return null;
+    const luot = parseFloat(document.getElementById('luot_'+p.id).value)||0;
+    if(luot<=0) return null;
+    let freq = 'daily';
+    if(p.custom){
+      const freqEl = document.getElementById('freq_'+p.id);
+      freq = freqEl ? freqEl.value : 'daily';
+    }
+    return {luot, freq};
+  }).filter(Boolean);
+
+  // Tách lộ trình đã tính thành: gói mua LẶP LẠI theo ngày (perDay lần/ngày), và các LƯỢT MUA ĐƠN LẺ
+  // (mỗi lần mua 1 lượt) của gói cố định/giới hạn/banner — để xếp lịch từng lượt vào từng ngày.
+  const dailyItems = plan.purchases.filter(p=>p.type==='daily').map(p=>({...p, boughtSoFar:0}));
+  let onceUnits = [];
+  plan.purchases.filter(p=>p.type!=='daily').forEach(p=>{
+    for(let i=0;i<p.buy;i++){ onceUnits.push({name:p.name, np:p.np, luot:p.luot, unlockLK:p.unlockLK||0}); }
+  });
+
+  // Sắp thứ tự các lượt mua đơn lẻ: BẮT BUỘC theo mốc Linh Kỹ cần mở khóa tăng dần trước (để không
+  // xếp gói tăng sao vào ngày chưa đủ điều kiện). Trong cùng nhóm mốc mở khóa:
+  //  - "reasonable": NP giảm dần — mỗi lượt xếp vào 1 ngày sẽ đẩy NP ngày đó vượt được nhiều mốc quà hơn.
+  //  - "fast": giữ nguyên thứ tự hiệu suất gốc (không quan tâm rải quà, ưu tiên mua sớm cho nhanh).
+  onceUnits.sort((a,b)=>{
+    if((a.unlockLK||0)!==(b.unlockLK||0)) return (a.unlockLK||0)-(b.unlockLK||0);
+    return mode==='reasonable' ? (b.np-a.np) : 0;
+  });
+
+  let cumulative = 0; // lượt tích lũy (free + mốc tặng tướng + đã mua), dùng để xét mở khóa gói tăng sao
+  const triggeredMoc = new Set();
+  const milestonesLK = config.milestones || [];
+  function applyMilestoneBonus(){
+    milestonesLK.forEach(m=>{
+      if(!triggeredMoc.has(m.moc) && cumulative>=m.moc){
+        triggeredMoc.add(m.moc);
+        cumulative += m.bonusLuot;
+      }
+    });
+  }
+  applyMilestoneBonus(); // mốc 0 lượt (trúng banner ngay từ đầu), nếu có bật
+
+  const days = [];
+  let onceIdx = 0, totalNP = 0, totalGifts = 0;
+
+  for(let day=1; day<=eventDays; day++){
+    const items = [];
+    let dayNP = 0;
+
+    // 1) lượt miễn phí trong ngày — cộng trước để có thể mở khóa gói tăng sao ngay trong ngày
+    freeDailyItems.forEach(f=>{
+      if(f.freq==='once'){ if(day===1) cumulative += f.luot; }
+      else cumulative += f.luot;
+    });
+    applyMilestoneBonus();
+
+    // 2) các lượt mua đơn lẻ (cố định/giới hạn/banner) nếu đã đủ điều kiện mở khóa hôm nay.
+    // "reasonable": trải đều — mỗi ngày chỉ lấy ra đúng số lượt cần thiết để CHẮC CHẮN mua hết
+    // phần còn lại trước khi hết ngày sự kiện (số lượt còn lại / số ngày còn lại, làm tròn lên).
+    // Nếu ngày còn nhiều mà lượt mua còn ít thì mỗi ngày chỉ 1 lượt (rải tối đa ra nhiều ngày);
+    // nếu ngày sắp hết mà lượt mua còn nhiều thì tự động dồn nhiều lượt/ngày để không bỏ sót gói nào.
+    // "fast": không giới hạn — hễ đủ điều kiện mở khóa là mua ngay trong cùng ngày cho nhanh gọn.
+    const remainingDaysFromHere = eventDays - day + 1;
+    const remainingOnceFromHere = onceUnits.length - onceIdx;
+    const maxOncePerDay = (mode==='reasonable')
+      ? Math.max(1, Math.ceil(remainingOnceFromHere / remainingDaysFromHere))
+      : Infinity;
+    let boughtOnceToday = 0;
+    while(onceIdx < onceUnits.length && boughtOnceToday < maxOncePerDay){
+      const unit = onceUnits[onceIdx];
+      const curLK = Math.floor(cumulative/200);
+      if(unit.unlockLK && curLK < unit.unlockLK) break; // chưa đủ Linh Kỹ — chờ tích thêm lượt các ngày sau
+      items.push({name:unit.name, np:unit.np, luot:unit.luot});
+      dayNP += unit.np;
+      cumulative += unit.luot;
+      applyMilestoneBonus();
+      onceIdx++; boughtOnceToday++;
+    }
+
+    // 3) gói mua theo ngày (tối đa perDay lần/ngày), nếu còn cần mua thêm
+    dailyItems.forEach(p=>{
+      const perDay = p.perDay || 1;
+      const remaining = p.buy - p.boughtSoFar;
+      if(remaining<=0) return;
+      const qty = Math.min(perDay, remaining);
+      if(qty<=0) return;
+      items.push({name:p.name, np:p.np*qty, luot:p.luot*qty, qty});
+      dayNP += p.np*qty;
+      cumulative += p.luot*qty;
+      p.boughtSoFar += qty;
+      applyMilestoneBonus();
+    });
+
+    const dailyDone = dailyItems.every(p=>p.boughtSoFar>=p.buy);
+    const onceDone = onceIdx>=onceUnits.length;
+
+    if(items.length>0 || !dailyDone || !onceDone){
+      const gifts = DAILY_NP_MILESTONES.filter(m=>dayNP>=m);
+      totalNP += dayNP;
+      totalGifts += gifts.length;
+      days.push({day, items, dayNP, cumulative, gifts});
+    }
+    if(dailyDone && onceDone) break;
+  }
+
+  const unfinished = (onceIdx < onceUnits.length) || dailyItems.some(p=>p.boughtSoFar<p.buy);
+  return {days, totalNP, totalGifts, eventDays, targetLuot, achieved:cumulative, unfinished};
+}
+
+function renderSchedule(){
+  const body = document.getElementById('scheduleBody');
+  const summary = document.getElementById('scheduleSummary');
+  if(!body || !summary) return;
+  const npPrice = Math.max(0, parseFloat(document.getElementById('npPrice').value)||0);
+  const result = buildDailySchedule(scheduleMode);
+
+  if(result.needsNothing){
+    body.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-faint);">Nguồn miễn phí${bannerCorrect?' + free tướng':''} đã đủ mục tiêu, không cần mua thêm gói nào.</td></tr>`;
+    summary.innerHTML = '';
+    return;
+  }
+
+  body.innerHTML = result.days.map(d=>{
+    const itemsTxt = d.items.length
+      ? d.items.map(it=> it.qty>1 ? `${it.name} ×${it.qty}` : it.name).join(', ')
+      : `<span style="color:var(--text-faint);">(chỉ dùng nguồn miễn phí)</span>`;
+    const giftsTxt = d.gifts.length
+      ? d.gifts.map(g=>`<span class="badge best">${g}</span>`).join('')
+      : `<span class="badge no">0</span>`;
+    return `<tr>
+      <td class="lkcell" style="text-align:left;">Ngày ${d.day}</td>
+      <td style="text-align:left;">${itemsTxt}</td>
+      <td class="npcell">${fmt(d.dayNP)}</td>
+      <td>${fmt(d.cumulative)}</td>
+      <td style="text-align:left;">${giftsTxt}</td>
+    </tr>`;
+  }).join('');
+
+  const usedDays = result.days.length;
+  const overLimit = usedDays >= result.eventDays && result.unfinished;
+  summary.innerHTML = `Dùng <b>${usedDays}</b>/${result.eventDays} ngày · Tổng <b>${fmt(result.totalNP)}</b> NP (${fmt(result.totalNP*npPrice)}đ) · Nhận tổng cộng <b>${result.totalGifts}</b> lượt mốc quà NP trong sự kiện.`
+    + (overLimit ? ` <span style="color:var(--rose);">⚠ Không đủ ngày sự kiện để mua hết lộ trình — cần tăng giới hạn mua/ngày của các gói hoặc giảm mục tiêu.</span>` : '');
 }
 
 // ---------- Nhật ký mua gói: ghi thủ công, lưu trên máy, tự tồn tại qua các lần mở lại ----------
