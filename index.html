@@ -1520,6 +1520,70 @@ renderHeroLogHistory();
   window.addEventListener('scroll', () => {
     btnTop.style.display = window.scrollY > 300 ? 'block' : 'none';
   });
+</script><button id="btn-reminder" onclick="toggleReminder()"
+  style="position:fixed; bottom:80px; right:24px; z-index:999;
+  padding:10px 14px; border-radius:20px; border:none;
+  background:#333; color:#fff; font-size:13px; cursor:pointer;
+  box-shadow:0 2px 8px rgba(0,0,0,.3); display:flex; align-items:center; gap:6px;">
+  🔔 <span id="reminder-label">Bật nhắc nhở</span>
+</button>
+
+<script>
+(function(){
+  const REMINDER_KEY = 'reminder_enabled';
+  const LAST_KEY = 'reminder_last_date';
+
+  function todayStr(){
+    return new Date().toISOString().slice(0,10); // YYYY-MM-DD
+  }
+
+  function updateLabel(){
+    const on = localStorage.getItem(REMINDER_KEY) === '1';
+    document.getElementById('reminder-label').textContent = on ? 'Đang bật nhắc nhở' : 'Bật nhắc nhở';
+  }
+
+  window.toggleReminder = function(){
+    const isOn = localStorage.getItem(REMINDER_KEY) === '1';
+    if(isOn){
+      localStorage.setItem(REMINDER_KEY, '0');
+      updateLabel();
+      return;
+    }
+    if(!('Notification' in window)){
+      alert('Trình duyệt này không hỗ trợ thông báo.');
+      return;
+    }
+    Notification.requestPermission().then(perm => {
+      if(perm === 'granted'){
+        localStorage.setItem(REMINDER_KEY, '1');
+        updateLabel();
+        new Notification('Đã bật nhắc nhở ✅', {
+          body: 'Mỗi ngày mở trang này, bạn sẽ được nhắc ghi nhật ký mua gói.'
+        });
+      } else {
+        alert('Bạn cần cho phép thông báo thì tính năng nhắc nhở mới hoạt động.');
+      }
+    });
+  };
+
+  function checkReminder(){
+    const on = localStorage.getItem(REMINDER_KEY) === '1';
+    if(!on) return;
+    if(Notification.permission !== 'granted') return;
+
+    const lastDate = localStorage.getItem(LAST_KEY);
+    const today = todayStr();
+    if(lastDate === today) return; // đã nhắc hôm nay rồi
+
+    localStorage.setItem(LAST_KEY, today);
+    new Notification('Nhắc nhở 🔔', {
+      body: 'Đừng quên ghi nhật ký mua gói hôm nay nhé!'
+    });
+  }
+
+  updateLabel();
+  checkReminder();
+})();
 </script>
 </body>
 </html>
