@@ -524,9 +524,8 @@
         <div class="panel-body">
 
           <div class="grp-title" style="margin-top:0;padding-top:0;border-top:none;">ĐỀ XUẤT MUA GÓI TỐI ƯU HÀNG NGÀY</div>
-          <small style="display:block;color:var(--text-faint);margin:-4px 0 12px;line-height:1.65;">
-            Xếp lịch mua theo đúng lộ trình đang tính ở khung "Kết quả lộ trình" bên phải — có xét số ngày sự kiện, giới hạn lượt mua mỗi ngày / tổng của từng gói, và mốc Linh Kỹ cần mở khóa cho gói tăng sao (dựa theo số lượt đã tích lũy).
-            Mốc quà NP trong ngày: <b>6 · 30 · 68 · 100 · 200 · 328 · 648 · 1000</b> NP — chi càng nhiều NP trong 1 ngày càng chạm được nhiều mốc quà của ngày đó.
+          <small style="display:block;color:var(--text-faint);margin:-4px 0 12px;line-height:1.6;">
+            Lịch mua theo lộ trình đang tính. Mốc quà NP/ngày: 6·30·68·100·200·328·648·1000.
           </small>
           <div class="toggle-row">
             <div class="toggle-btn active-good" id="btnSchedFast" onclick="setScheduleMode('fast')">
@@ -541,7 +540,7 @@
           <div id="scheduleSummary" class="opt-note" style="margin:10px 0;"></div>
           <table class="opt-table sched-table">
             <thead>
-              <tr><th style="text-align:left;">Ngày</th><th style="text-align:left;">Gói mua trong ngày</th><th>NP ngày</th><th>Lượt free (gói)</th><th>Lượt free (tướng)</th><th>Lượt cộng dồn</th><th style="text-align:left;">Mốc quà đạt (NP)</th></tr>
+              <tr><th style="text-align:left;">Ngày</th><th style="text-align:left;">Gói mua</th><th>NP</th><th>Free gói</th><th>Free tướng</th><th>Cộng dồn</th><th style="text-align:left;">Mốc quà</th></tr>
             </thead>
             <tbody id="scheduleBody"></tbody>
           </table>
@@ -1187,7 +1186,7 @@ function buildDailySchedule(mode){
         triggeredMoc.add(m.moc);
         cumulative += m.bonusLuot;
         added += m.bonusLuot;
-        if(items) items.push({name:`Tướng tặng free (${m.label})`, np:0, luot:m.bonusLuot, freeHero:true});
+        if(items) items.push({name:`Tướng free`, np:0, luot:m.bonusLuot, freeHero:true});
       }
     });
     return added;
@@ -1285,7 +1284,7 @@ function renderSchedule(){
   const result = buildDailySchedule(scheduleMode);
 
   if(result.needsNothing){
-    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-faint);">Nguồn miễn phí${bannerCorrect?' + free tướng':''} đã đủ mục tiêu, không cần mua thêm gói nào.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-faint);">Free đã đủ mục tiêu.</td></tr>`;
     summary.innerHTML = '';
     return;
   }
@@ -1298,13 +1297,13 @@ function renderSchedule(){
       ? paidItems.map(it=> it.qty>1 ? `${it.name} ×${it.qty}` : it.name).join(', ')
       : '';
     const freeTxt = freeItems.length
-      ? `<span style="color:var(--teal);">Free: ${freeItems.map(it=>`${it.name} (+${fmt(it.luot)} lượt)`).join(', ')}</span>`
+      ? `<span style="color:var(--teal);">${freeItems.map(it=>`${it.name} +${fmt(it.luot)}`).join(', ')}</span>`
       : '';
     const heroFreeTxt = heroFreeItems.length
-      ? `<span style="color:var(--rose);">${heroFreeItems.map(it=>`${it.name} (+${fmt(it.luot)} lượt)`).join(', ')}</span>`
+      ? `<span style="color:var(--rose);">${heroFreeItems.map(it=>`${it.name} +${fmt(it.luot)}`).join(', ')}</span>`
       : '';
     const itemsTxt = [paidTxt, freeTxt, heroFreeTxt].filter(Boolean).join('<br>')
-      || `<span style="color:var(--text-faint);">(chỉ dùng nguồn miễn phí)</span>`;
+      || `<span style="color:var(--text-faint);">–</span>`;
     const giftsTxt = d.gifts.length
       ? d.gifts.map(g=>`<span class="badge best">${g}</span>`).join('')
       : `<span class="badge no">0</span>`;
@@ -1321,8 +1320,8 @@ function renderSchedule(){
 
   const usedDays = result.days.length;
   const overLimit = usedDays >= result.eventDays && result.unfinished;
-  summary.innerHTML = `Dùng <b>${usedDays}</b>/${result.eventDays} ngày · Tổng <b>${fmt(result.totalNP)}</b> NP (${fmt(result.totalNP*npPrice)}đ) · <b>${fmt(result.totalFreeLuot||0)}</b> lượt free (gói) · <b>${fmt(result.totalHeroFreeLuot||0)}</b> lượt free (tướng tặng) · Nhận tổng cộng <b>${result.totalGifts}</b> lượt mốc quà NP trong sự kiện.`
-    + (overLimit ? ` <span style="color:var(--rose);">⚠ Không đủ ngày sự kiện để mua hết lộ trình — cần tăng giới hạn mua/ngày của các gói hoặc giảm mục tiêu.</span>` : '');
+  summary.innerHTML = `${usedDays}/${result.eventDays} ngày · ${fmt(result.totalNP)} NP (${fmt(result.totalNP*npPrice)}đ) · Free gói ${fmt(result.totalFreeLuot||0)} · Free tướng ${fmt(result.totalHeroFreeLuot||0)} · ${result.totalGifts} mốc quà`
+    + (overLimit ? ` <span style="color:var(--rose);">⚠ thiếu ngày</span>` : '');
 }
 
 // ---------- Nhật ký mua gói: ghi thủ công, lưu trên máy, tự tồn tại qua các lần mở lại ----------
@@ -1419,7 +1418,7 @@ function renderLogHistory(){
     grandNP += dayNP;
     grandLuot += dayLuot;
     grandFreeLuot += freeLuot;
-    const freeTxt = freeLuot>0 ? ` <span style="color:var(--teal);">(+${fmt(freeLuot)} free)</span>` : '';
+    const freeTxt = freeLuot>0 ? ` <span style="color:var(--teal);">+${fmt(freeLuot)} free</span>` : '';
     return `<div class="log-day">
       <div class="hd"><span class="n">Ngày ${day} <span class="del" onclick="deleteLogDay(${day})">xóa</span></span><span class="sum">${fmt(dayNP)} NP · ${fmt(dayLuot)} lượt${freeTxt}</span></div>
       <div class="items">${items}</div>
@@ -1427,12 +1426,11 @@ function renderLogHistory(){
   }).join('');
   const totalLuotTxt = (() => {
     const grandHeroFreeLuot = getHeroFreeLuotForTotal(grandLuot + grandFreeLuot);
-    const parts = [`${fmt(grandLuot)} lượt mua`];
-    if(grandFreeLuot>0) parts.push(`${fmt(grandFreeLuot)} lượt free (gói)`);
-    if(grandHeroFreeLuot>0) parts.push(`${fmt(grandHeroFreeLuot)} lượt free (tướng tặng)`);
-    return parts.length>1
-      ? `${parts.join(' + ')} = ${fmt(grandLuot+grandFreeLuot+grandHeroFreeLuot)} lượt`
-      : parts[0];
+    const total = grandLuot + grandFreeLuot + grandHeroFreeLuot;
+    const extra = [];
+    if(grandFreeLuot>0) extra.push(`free gói ${fmt(grandFreeLuot)}`);
+    if(grandHeroFreeLuot>0) extra.push(`free tướng ${fmt(grandHeroFreeLuot)}`);
+    return extra.length ? `${fmt(total)} lượt (mua ${fmt(grandLuot)} + ${extra.join(' + ')})` : `${fmt(grandLuot)} lượt`;
   })();
   el.innerHTML = rows + `<div class="log-total"><span>Tổng đã mua</span><span class="v">${fmt(grandNP)} NP · ${fmt(grandNP*npPrice)}đ · ${totalLuotTxt}</span></div>`;
 }
@@ -1511,15 +1509,17 @@ function renderHeroLogHistory(){
   const rows = list.map((v, idx)=>{
     sum += v;
     const runningAvg = sum/(idx+1);
+    const rate = (100/v).toFixed(2);
     return `<div class="hero-row">
       <div class="hd">
-        <span class="n">Tướng #${idx+1} — ${fmt(v)} lượt<span class="del" onclick="deleteHeroLogEntry(${idx})">xóa</span></span>
-        <span class="avg">TB đến nay: ${runningAvg.toFixed(1)}</span>
+        <span class="n">Tướng #${idx+1} — ${fmt(v)} lượt (${rate}%)<span class="del" onclick="deleteHeroLogEntry(${idx})">xóa</span></span>
+        <span class="avg">TB: ${runningAvg.toFixed(1)}</span>
       </div>
     </div>`;
   }).join('');
   const totalAvg = sum/list.length;
-  el.innerHTML = rows + `<div class="log-total"><span>Tổng ${list.length} tướng đã ghi</span><span class="v">TB ${totalAvg.toFixed(1)} lượt/tướng</span></div>`;
+  const totalRate = (100/totalAvg).toFixed(2);
+  el.innerHTML = rows + `<div class="log-total"><span>Tổng ${list.length} tướng</span><span class="v">TB ${totalAvg.toFixed(1)} lượt/tướng (${totalRate}%)</span></div>`;
 }
 function resetHeroLog(){
   if(confirm('Xóa toàn bộ cột mốc ra tướng đã ghi? Nhật ký mua gói không bị ảnh hưởng. Không thể hoàn tác.')){
