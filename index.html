@@ -541,7 +541,7 @@
           <div id="scheduleSummary" class="opt-note" style="margin:10px 0;"></div>
           <table class="opt-table sched-table">
             <thead>
-              <tr><th style="text-align:left;">Ngày</th><th style="text-align:left;">Gói mua trong ngày</th><th>NP ngày</th><th>Lượt free</th><th>Lượt cộng dồn</th><th style="text-align:left;">Mốc quà đạt (NP)</th></tr>
+              <tr><th style="text-align:left;">Ngày</th><th style="text-align:left;">Gói mua trong ngày</th><th>NP ngày</th><th>Lượt free (gói)</th><th>Lượt free (tướng)</th><th>Lượt cộng dồn</th><th style="text-align:left;">Mốc quà đạt (NP)</th></tr>
             </thead>
             <tbody id="scheduleBody"></tbody>
           </table>
@@ -800,7 +800,7 @@ function readMilestones(){
     const onlyBanner = m.bannerFixed ? true : (document.getElementById('bo_'+m.id)?.checked || false);
     if(onlyBanner && !bannerCorrect) return;
     if(bonusLuot<=0) return;
-    milestones.push({moc, bonusLuot});
+    milestones.push({moc, bonusLuot, label:m.label});
   });
   return milestones;
 }
@@ -1177,23 +1177,34 @@ function buildDailySchedule(mode){
   let cumulative = 0; // lượt tích lũy (free + mốc tặng tướng + đã mua), dùng để xét mở khóa gói tăng sao
   const triggeredMoc = new Set();
   const milestonesLK = config.milestones || [];
-  function applyMilestoneBonus(){
+  // Tách riêng lượt từ "mốc tặng tướng miễn phí" (banner đúng, mốc lượt tích lũy...) khỏi lượt free
+  // của các gói quay hằng ngày — đây là 2 nguồn free khác nhau, cần hiển thị riêng biệt.
+  // items (nếu có) sẽ được ghi thêm 1 dòng "Tướng tặng free (...)" cho mỗi mốc vừa đạt.
+  function applyMilestoneBonus(items){
+    let added = 0;
     milestonesLK.forEach(m=>{
       if(!triggeredMoc.has(m.moc) && cumulative>=m.moc){
         triggeredMoc.add(m.moc);
         cumulative += m.bonusLuot;
+        added += m.bonusLuot;
+        if(items) items.push({name:`Tướng tặng free (${m.label})`, np:0, luot:m.bonusLuot, freeHero:true});
       }
     });
+    return added;
   }
-  applyMilestoneBonus(); // mốc 0 lượt (trúng banner ngay từ đầu), nếu có bật
 
   const days = [];
-  let onceIdx = 0, totalNP = 0, totalGifts = 0, totalFreeLuot = 0;
+  let onceIdx = 0, totalNP = 0, totalGifts = 0, totalFreeLuot = 0, totalHeroFreeLuot = 0;
 
   for(let day=1; day<=eventDays; day++){
     const items = [];
     let dayNP = 0;
     let dayFreeLuot = 0;
+    let dayHeroFreeLuot = 0;
+
+    // 0) mốc tặng tướng miễn phí đủ điều kiện ngay từ đầu ngày (gồm cả mốc 0 lượt "trúng banner
+    // ngay từ đầu" ở ngày 1) — kiểm tra trước để có thể mở khóa gói tăng sao sớm nhất có thể.
+    dayHeroFreeLuot += applyMilestoneBonus(items);
 
     // 1) lượt miễn phí trong ngày — cộng trước để có thể mở khóa gói tăng sao ngay trong ngày.
     // Ghi rõ từng nguồn free vào items (free:true, np:0) để hiển thị minh bạch trong lịch đề xuất,
@@ -1209,7 +1220,7 @@ function buildDailySchedule(mode){
       }
     });
     totalFreeLuot += dayFreeLuot;
-    applyMilestoneBonus();
+    dayHeroFreeLuot += applyMilestoneBonus(items);
 
     // 2) các lượt mua đơn lẻ (cố định/giới hạn/banner) nếu đã đủ điều kiện mở khóa hôm nay.
     // "reasonable": trải đều — mỗi ngày chỉ lấy ra đúng số lượt cần thiết để CHẮC CHẮN mua hết
@@ -1230,7 +1241,7 @@ function buildDailySchedule(mode){
       items.push({name:unit.name, np:unit.np, luot:unit.luot});
       dayNP += unit.np;
       cumulative += unit.luot;
-      applyMilestoneBonus();
+      dayHeroFreeLuot += applyMilestoneBonus(items);
       onceIdx++; boughtOnceToday++;
     }
 
@@ -1245,8 +1256,10 @@ function buildDailySchedule(mode){
       dayNP += p.np*qty;
       cumulative += p.luot*qty;
       p.boughtSoFar += qty;
-      applyMilestoneBonus();
+      dayHeroFreeLuot += applyMilestoneBonus(items);
     });
+
+    totalHeroFreeLuot += dayHeroFreeLuot;
 
     const dailyDone = dailyItems.every(p=>p.boughtSoFar>=p.buy);
     const onceDone = onceIdx>=onceUnits.length;
@@ -1255,13 +1268,13 @@ function buildDailySchedule(mode){
       const gifts = DAILY_NP_MILESTONES.filter(m=>dayNP>=m);
       totalNP += dayNP;
       totalGifts += gifts.length;
-      days.push({day, items, dayNP, dayFreeLuot, cumulative, gifts});
+      days.push({day, items, dayNP, dayFreeLuot, dayHeroFreeLuot, cumulative, gifts});
     }
     if(dailyDone && onceDone) break;
   }
 
   const unfinished = (onceIdx < onceUnits.length) || dailyItems.some(p=>p.boughtSoFar<p.buy);
-  return {days, totalNP, totalGifts, totalFreeLuot, eventDays, targetLuot, achieved:cumulative, unfinished};
+  return {days, totalNP, totalGifts, totalFreeLuot, totalHeroFreeLuot, eventDays, targetLuot, achieved:cumulative, unfinished};
 }
 
 function renderSchedule(){
@@ -1272,21 +1285,25 @@ function renderSchedule(){
   const result = buildDailySchedule(scheduleMode);
 
   if(result.needsNothing){
-    body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-faint);">Nguồn miễn phí${bannerCorrect?' + free tướng':''} đã đủ mục tiêu, không cần mua thêm gói nào.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-faint);">Nguồn miễn phí${bannerCorrect?' + free tướng':''} đã đủ mục tiêu, không cần mua thêm gói nào.</td></tr>`;
     summary.innerHTML = '';
     return;
   }
 
   body.innerHTML = result.days.map(d=>{
-    const paidItems = d.items.filter(it=>!it.free);
+    const paidItems = d.items.filter(it=>!it.free && !it.freeHero);
     const freeItems = d.items.filter(it=>it.free);
+    const heroFreeItems = d.items.filter(it=>it.freeHero);
     const paidTxt = paidItems.length
       ? paidItems.map(it=> it.qty>1 ? `${it.name} ×${it.qty}` : it.name).join(', ')
       : '';
     const freeTxt = freeItems.length
       ? `<span style="color:var(--teal);">Free: ${freeItems.map(it=>`${it.name} (+${fmt(it.luot)} lượt)`).join(', ')}</span>`
       : '';
-    const itemsTxt = [paidTxt, freeTxt].filter(Boolean).join('<br>')
+    const heroFreeTxt = heroFreeItems.length
+      ? `<span style="color:var(--rose);">${heroFreeItems.map(it=>`${it.name} (+${fmt(it.luot)} lượt)`).join(', ')}</span>`
+      : '';
+    const itemsTxt = [paidTxt, freeTxt, heroFreeTxt].filter(Boolean).join('<br>')
       || `<span style="color:var(--text-faint);">(chỉ dùng nguồn miễn phí)</span>`;
     const giftsTxt = d.gifts.length
       ? d.gifts.map(g=>`<span class="badge best">${g}</span>`).join('')
@@ -1296,6 +1313,7 @@ function renderSchedule(){
       <td style="text-align:left;">${itemsTxt}</td>
       <td class="npcell">${fmt(d.dayNP)}</td>
       <td>${d.dayFreeLuot ? fmt(d.dayFreeLuot) : '–'}</td>
+      <td>${d.dayHeroFreeLuot ? fmt(d.dayHeroFreeLuot) : '–'}</td>
       <td>${fmt(d.cumulative)}</td>
       <td style="text-align:left;">${giftsTxt}</td>
     </tr>`;
@@ -1303,7 +1321,7 @@ function renderSchedule(){
 
   const usedDays = result.days.length;
   const overLimit = usedDays >= result.eventDays && result.unfinished;
-  summary.innerHTML = `Dùng <b>${usedDays}</b>/${result.eventDays} ngày · Tổng <b>${fmt(result.totalNP)}</b> NP (${fmt(result.totalNP*npPrice)}đ) · <b>${fmt(result.totalFreeLuot||0)}</b> lượt miễn phí · Nhận tổng cộng <b>${result.totalGifts}</b> lượt mốc quà NP trong sự kiện.`
+  summary.innerHTML = `Dùng <b>${usedDays}</b>/${result.eventDays} ngày · Tổng <b>${fmt(result.totalNP)}</b> NP (${fmt(result.totalNP*npPrice)}đ) · <b>${fmt(result.totalFreeLuot||0)}</b> lượt free (gói) · <b>${fmt(result.totalHeroFreeLuot||0)}</b> lượt free (tướng tặng) · Nhận tổng cộng <b>${result.totalGifts}</b> lượt mốc quà NP trong sự kiện.`
     + (overLimit ? ` <span style="color:var(--rose);">⚠ Không đủ ngày sự kiện để mua hết lộ trình — cần tăng giới hạn mua/ngày của các gói hoặc giảm mục tiêu.</span>` : '');
 }
 
@@ -1369,6 +1387,13 @@ function getFreeLuotForDay(day){
   });
   return sum;
 }
+// Ước tính lượt free đến từ "mốc tặng tướng miễn phí" (banner đúng / mốc lượt tích lũy...), dựa trên
+// tổng lượt đã đạt được (mua + free gói). Tách riêng khỏi lượt free của các gói quay hằng ngày.
+function getHeroFreeLuotForTotal(totalLuot){
+  let heroFree = 0;
+  readMilestones().forEach(m=>{ if(totalLuot>=m.moc) heroFree += m.bonusLuot; });
+  return heroFree;
+}
 function renderLogHistory(){
   const log = loadLog();
   const npPriceEl = document.getElementById('npPrice');
@@ -1400,9 +1425,15 @@ function renderLogHistory(){
       <div class="items">${items}</div>
     </div>`;
   }).join('');
-  const totalLuotTxt = grandFreeLuot>0
-    ? `${fmt(grandLuot)} lượt mua + ${fmt(grandFreeLuot)} lượt free = ${fmt(grandLuot+grandFreeLuot)} lượt`
-    : `${fmt(grandLuot)} lượt`;
+  const totalLuotTxt = (() => {
+    const grandHeroFreeLuot = getHeroFreeLuotForTotal(grandLuot + grandFreeLuot);
+    const parts = [`${fmt(grandLuot)} lượt mua`];
+    if(grandFreeLuot>0) parts.push(`${fmt(grandFreeLuot)} lượt free (gói)`);
+    if(grandHeroFreeLuot>0) parts.push(`${fmt(grandHeroFreeLuot)} lượt free (tướng tặng)`);
+    return parts.length>1
+      ? `${parts.join(' + ')} = ${fmt(grandLuot+grandFreeLuot+grandHeroFreeLuot)} lượt`
+      : parts[0];
+  })();
   el.innerHTML = rows + `<div class="log-total"><span>Tổng đã mua</span><span class="v">${fmt(grandNP)} NP · ${fmt(grandNP*npPrice)}đ · ${totalLuotTxt}</span></div>`;
 }
 function resetLog(){
