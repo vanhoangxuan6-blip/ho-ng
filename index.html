@@ -541,7 +541,7 @@
           <div id="scheduleSummary" class="opt-note" style="margin:10px 0;"></div>
           <table class="opt-table sched-table">
             <thead>
-              <tr><th style="text-align:left;">Ngày</th><th style="text-align:left;">Gói mua trong ngày</th><th>NP ngày</th><th>Lượt cộng dồn</th><th style="text-align:left;">Mốc quà đạt (NP)</th></tr>
+              <tr><th style="text-align:left;">Ngày</th><th style="text-align:left;">Gói mua trong ngày</th><th>NP ngày</th><th>Lượt free</th><th>Lượt cộng dồn</th><th style="text-align:left;">Mốc quà đạt (NP)</th></tr>
             </thead>
             <tbody id="scheduleBody"></tbody>
           </table>
@@ -1140,17 +1140,21 @@ function buildDailySchedule(mode){
   }
 
   // Lượt miễn phí phát sinh MỖI NGÀY (không tốn NP) — vẫn cần cộng dồn để xét mốc mở khóa gói tăng sao
+  // Giữ lại cả tên gói free để hiển thị rõ trong lịch đề xuất (không chỉ cộng ngầm vào lượt cộng dồn).
   const freeDailyItems = PKG.filter(p=>p.type==='free-daily').map(p=>{
     const chk = document.getElementById('chk_'+p.id);
     if(!chk || !chk.checked) return null;
     const luot = parseFloat(document.getElementById('luot_'+p.id).value)||0;
     if(luot<=0) return null;
     let freq = 'daily';
+    let name = p.name;
     if(p.custom){
       const freqEl = document.getElementById('freq_'+p.id);
       freq = freqEl ? freqEl.value : 'daily';
+      const nameEl = document.getElementById('name_'+p.id);
+      name = nameEl && nameEl.value ? nameEl.value : p.name;
     }
-    return {luot, freq};
+    return {luot, freq, name};
   }).filter(Boolean);
 
   // Tách lộ trình đã tính thành: gói mua LẶP LẠI theo ngày (perDay lần/ngày), và các LƯỢT MUA ĐƠN LẺ
@@ -1184,17 +1188,27 @@ function buildDailySchedule(mode){
   applyMilestoneBonus(); // mốc 0 lượt (trúng banner ngay từ đầu), nếu có bật
 
   const days = [];
-  let onceIdx = 0, totalNP = 0, totalGifts = 0;
+  let onceIdx = 0, totalNP = 0, totalGifts = 0, totalFreeLuot = 0;
 
   for(let day=1; day<=eventDays; day++){
     const items = [];
     let dayNP = 0;
+    let dayFreeLuot = 0;
 
-    // 1) lượt miễn phí trong ngày — cộng trước để có thể mở khóa gói tăng sao ngay trong ngày
+    // 1) lượt miễn phí trong ngày — cộng trước để có thể mở khóa gói tăng sao ngay trong ngày.
+    // Ghi rõ từng nguồn free vào items (free:true, np:0) để hiển thị minh bạch trong lịch đề xuất,
+    // thay vì chỉ cộng ngầm vào lượt cộng dồn như trước.
     freeDailyItems.forEach(f=>{
-      if(f.freq==='once'){ if(day===1) cumulative += f.luot; }
-      else cumulative += f.luot;
+      let added = 0;
+      if(f.freq==='once'){ if(day===1) added = f.luot; }
+      else { added = f.luot; }
+      if(added>0){
+        cumulative += added;
+        dayFreeLuot += added;
+        items.push({name:f.name, np:0, luot:added, free:true});
+      }
     });
+    totalFreeLuot += dayFreeLuot;
     applyMilestoneBonus();
 
     // 2) các lượt mua đơn lẻ (cố định/giới hạn/banner) nếu đã đủ điều kiện mở khóa hôm nay.
@@ -1241,13 +1255,13 @@ function buildDailySchedule(mode){
       const gifts = DAILY_NP_MILESTONES.filter(m=>dayNP>=m);
       totalNP += dayNP;
       totalGifts += gifts.length;
-      days.push({day, items, dayNP, cumulative, gifts});
+      days.push({day, items, dayNP, dayFreeLuot, cumulative, gifts});
     }
     if(dailyDone && onceDone) break;
   }
 
   const unfinished = (onceIdx < onceUnits.length) || dailyItems.some(p=>p.boughtSoFar<p.buy);
-  return {days, totalNP, totalGifts, eventDays, targetLuot, achieved:cumulative, unfinished};
+  return {days, totalNP, totalGifts, totalFreeLuot, eventDays, targetLuot, achieved:cumulative, unfinished};
 }
 
 function renderSchedule(){
@@ -1258,15 +1272,22 @@ function renderSchedule(){
   const result = buildDailySchedule(scheduleMode);
 
   if(result.needsNothing){
-    body.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-faint);">Nguồn miễn phí${bannerCorrect?' + free tướng':''} đã đủ mục tiêu, không cần mua thêm gói nào.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-faint);">Nguồn miễn phí${bannerCorrect?' + free tướng':''} đã đủ mục tiêu, không cần mua thêm gói nào.</td></tr>`;
     summary.innerHTML = '';
     return;
   }
 
   body.innerHTML = result.days.map(d=>{
-    const itemsTxt = d.items.length
-      ? d.items.map(it=> it.qty>1 ? `${it.name} ×${it.qty}` : it.name).join(', ')
-      : `<span style="color:var(--text-faint);">(chỉ dùng nguồn miễn phí)</span>`;
+    const paidItems = d.items.filter(it=>!it.free);
+    const freeItems = d.items.filter(it=>it.free);
+    const paidTxt = paidItems.length
+      ? paidItems.map(it=> it.qty>1 ? `${it.name} ×${it.qty}` : it.name).join(', ')
+      : '';
+    const freeTxt = freeItems.length
+      ? `<span style="color:var(--teal);">Free: ${freeItems.map(it=>`${it.name} (+${fmt(it.luot)} lượt)`).join(', ')}</span>`
+      : '';
+    const itemsTxt = [paidTxt, freeTxt].filter(Boolean).join('<br>')
+      || `<span style="color:var(--text-faint);">(chỉ dùng nguồn miễn phí)</span>`;
     const giftsTxt = d.gifts.length
       ? d.gifts.map(g=>`<span class="badge best">${g}</span>`).join('')
       : `<span class="badge no">0</span>`;
@@ -1274,6 +1295,7 @@ function renderSchedule(){
       <td class="lkcell" style="text-align:left;">Ngày ${d.day}</td>
       <td style="text-align:left;">${itemsTxt}</td>
       <td class="npcell">${fmt(d.dayNP)}</td>
+      <td>${d.dayFreeLuot ? fmt(d.dayFreeLuot) : '–'}</td>
       <td>${fmt(d.cumulative)}</td>
       <td style="text-align:left;">${giftsTxt}</td>
     </tr>`;
@@ -1281,7 +1303,7 @@ function renderSchedule(){
 
   const usedDays = result.days.length;
   const overLimit = usedDays >= result.eventDays && result.unfinished;
-  summary.innerHTML = `Dùng <b>${usedDays}</b>/${result.eventDays} ngày · Tổng <b>${fmt(result.totalNP)}</b> NP (${fmt(result.totalNP*npPrice)}đ) · Nhận tổng cộng <b>${result.totalGifts}</b> lượt mốc quà NP trong sự kiện.`
+  summary.innerHTML = `Dùng <b>${usedDays}</b>/${result.eventDays} ngày · Tổng <b>${fmt(result.totalNP)}</b> NP (${fmt(result.totalNP*npPrice)}đ) · <b>${fmt(result.totalFreeLuot||0)}</b> lượt miễn phí · Nhận tổng cộng <b>${result.totalGifts}</b> lượt mốc quà NP trong sự kiện.`
     + (overLimit ? ` <span style="color:var(--rose);">⚠ Không đủ ngày sự kiện để mua hết lộ trình — cần tăng giới hạn mua/ngày của các gói hoặc giảm mục tiêu.</span>` : '');
 }
 
@@ -1327,6 +1349,26 @@ function deleteLogDay(day){
   renderLogForm();
   renderLogHistory();
 }
+// Ước tính số lượt free áp dụng cho 1 ngày cụ thể, dựa trên các gói free đang bật ở khung cấu hình
+// phía trên (vì nhật ký mua gói chỉ ghi thủ công các gói TỐN NP, không ghi riêng từng nguồn free).
+function getFreeLuotForDay(day){
+  let sum = 0;
+  PKG.filter(p=>p.type==='free-daily').forEach(p=>{
+    const chk = document.getElementById('chk_'+p.id);
+    if(!chk || !chk.checked) return;
+    const luotEl = document.getElementById('luot_'+p.id);
+    const luot = luotEl ? (parseFloat(luotEl.value)||0) : 0;
+    if(luot<=0) return;
+    let freq = 'daily';
+    if(p.custom){
+      const freqEl = document.getElementById('freq_'+p.id);
+      freq = freqEl ? freqEl.value : 'daily';
+    }
+    if(freq==='once'){ if(day===1) sum += luot; }
+    else sum += luot;
+  });
+  return sum;
+}
 function renderLogHistory(){
   const log = loadLog();
   const npPriceEl = document.getElementById('npPrice');
@@ -1337,23 +1379,31 @@ function renderLogHistory(){
     el.innerHTML = `<div class="empty-note">Chưa ghi ngày nào.</div>`;
     return;
   }
-  let grandNP = 0;
+  let grandNP = 0, grandLuot = 0, grandFreeLuot = 0;
   const rows = days.map(day=>{
     const entry = log[day];
-    let dayNP = 0;
+    let dayNP = 0, dayLuot = 0;
     const items = Object.keys(entry).map(id=>{
       const p = PKG.find(x=>x.id===id);
       const count = entry[id];
       dayNP += (p?p.np:0)*count;
+      dayLuot += (p?p.luot:0)*count;
       return `${p?p.name:id} ×${count}`;
     }).join(', ');
+    const freeLuot = getFreeLuotForDay(day);
     grandNP += dayNP;
+    grandLuot += dayLuot;
+    grandFreeLuot += freeLuot;
+    const freeTxt = freeLuot>0 ? ` <span style="color:var(--teal);">(+${fmt(freeLuot)} free)</span>` : '';
     return `<div class="log-day">
-      <div class="hd"><span class="n">Ngày ${day} <span class="del" onclick="deleteLogDay(${day})">xóa</span></span><span class="sum">${fmt(dayNP)} NP</span></div>
+      <div class="hd"><span class="n">Ngày ${day} <span class="del" onclick="deleteLogDay(${day})">xóa</span></span><span class="sum">${fmt(dayNP)} NP · ${fmt(dayLuot)} lượt${freeTxt}</span></div>
       <div class="items">${items}</div>
     </div>`;
   }).join('');
-  el.innerHTML = rows + `<div class="log-total"><span>Tổng đã mua</span><span class="v">${fmt(grandNP)} NP · ${fmt(grandNP*npPrice)}đ</span></div>`;
+  const totalLuotTxt = grandFreeLuot>0
+    ? `${fmt(grandLuot)} lượt mua + ${fmt(grandFreeLuot)} lượt free = ${fmt(grandLuot+grandFreeLuot)} lượt`
+    : `${fmt(grandLuot)} lượt`;
+  el.innerHTML = rows + `<div class="log-total"><span>Tổng đã mua</span><span class="v">${fmt(grandNP)} NP · ${fmt(grandNP*npPrice)}đ · ${totalLuotTxt}</span></div>`;
 }
 function resetLog(){
   if(confirm('Xóa toàn bộ nhật ký đã ghi? Dùng khi sự kiện kết thúc. Không thể hoàn tác.')){
